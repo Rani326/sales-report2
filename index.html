@@ -45,9 +45,8 @@
     .day-header.week-col { color: #9e9eff; background: #f8f8ff; border-left: 1px solid #ebebff; }
 
     /* ── 캘린더 ── */
-    .calendar-wrap { flex: 1; padding: 7px; overflow: hidden; display: flex; flex-direction: column; }
+    .calendar-wrap { flex: 1; padding: 7px; overflow: hidden; display: flex; flex-direction: column; gap: 5px; }
     .week-group { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-    .week-group + .week-group { margin-top: 5px; }
     .days-row { display: grid; grid-template-columns: repeat(7, 1fr) 96px; gap: 5px; flex: 1; min-height: 0; }
 
     /* ── 날짜 셀 ── */
@@ -317,14 +316,14 @@
         <div class="input-row card">
           <label>카드 매출</label>
           <div class="input-wrap card-wrap">
-            <input type="number" id="input-card" placeholder="0" min="0" step="1000" />
+            <input type="text" inputmode="numeric" id="input-card" placeholder="0" />
             <span class="input-unit">원</span>
           </div>
         </div>
         <div class="input-row cash">
           <label>현금 매출</label>
           <div class="input-wrap cash-wrap">
-            <input type="number" id="input-cash" placeholder="0" min="0" step="1000" />
+            <input type="text" inputmode="numeric" id="input-cash" placeholder="0" />
             <span class="input-unit">원</span>
           </div>
         </div>
@@ -338,14 +337,14 @@
         <div class="input-row rent">
           <label>임차료</label>
           <div class="input-wrap rent-wrap">
-            <input type="number" id="input-rent" placeholder="0" min="0" step="1000" />
+            <input type="text" inputmode="numeric" id="input-rent" placeholder="0" />
             <span class="input-unit">원</span>
           </div>
         </div>
         <div class="input-row material">
           <label>재료비</label>
           <div class="input-wrap material-wrap">
-            <input type="number" id="input-material" placeholder="0" min="0" step="1000" />
+            <input type="text" inputmode="numeric" id="input-material" placeholder="0" />
             <span class="input-unit">원</span>
           </div>
         </div>
@@ -663,13 +662,25 @@
     document.getElementById('sum-days').textContent = monthDays > 0 ? monthDays + '일' : '-';
   }
 
+  // ── 콤마 포맷 ──
+  function formatComma(el) {
+    const raw = el.value.replace(/[^0-9]/g, '');
+    el.value = raw ? parseInt(raw).toLocaleString('ko-KR') : '';
+  }
+  function parseComma(id) {
+    return parseInt((document.getElementById(id).value || '').replace(/[^0-9]/g, '')) || 0;
+  }
+  ['input-card','input-cash','input-rent','input-material'].forEach(id => {
+    document.getElementById(id).addEventListener('input', e => formatComma(e.target));
+  });
+
   // ── 모달 ──
   function getInputs() {
     return {
-      card:     parseInt(document.getElementById('input-card').value)     || 0,
-      cash:     parseInt(document.getElementById('input-cash').value)     || 0,
-      rent:     parseInt(document.getElementById('input-rent').value)     || 0,
-      material: parseInt(document.getElementById('input-material').value) || 0,
+      card:     parseComma('input-card'),
+      cash:     parseComma('input-cash'),
+      rent:     parseComma('input-rent'),
+      material: parseComma('input-material'),
     };
   }
 
@@ -693,10 +704,10 @@
     selectedKey = key; selectedDow = dow;
     const entry = sales[key] || {};
     document.getElementById('modal-date').textContent = `${currentYear}년 ${MONTH_NAMES[month]} ${day}일 (${DAY_KO[dow]})`;
-    document.getElementById('input-card').value     = entry.card     || '';
-    document.getElementById('input-cash').value     = entry.cash     || '';
-    document.getElementById('input-rent').value     = entry.rent     || '';
-    document.getElementById('input-material').value = entry.material || '';
+    document.getElementById('input-card').value     = entry.card     ? entry.card.toLocaleString('ko-KR')     : '';
+    document.getElementById('input-cash').value     = entry.cash     ? entry.cash.toLocaleString('ko-KR')     : '';
+    document.getElementById('input-rent').value     = entry.rent     ? entry.rent.toLocaleString('ko-KR')     : '';
+    document.getElementById('input-material').value = entry.material ? entry.material.toLocaleString('ko-KR') : '';
     document.getElementById('btn-delete').style.display = sales[key] ? 'inline-block' : 'none';
     document.getElementById('btn-save').disabled = false;
 
