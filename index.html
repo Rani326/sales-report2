@@ -13,6 +13,9 @@
       background: #f0f2f8; color: #2d2d2d;
       height: 100vh; display: flex; flex-direction: column; overflow: hidden;
     }
+    @media (max-width: 600px) {
+      body { height: auto; overflow: auto; }
+    }
 
     /* ── 헤더 ── */
     .header {
@@ -266,9 +269,9 @@
       .week-bar-avg { font-size: 0.6em; color: #aaa; font-weight: 600; margin-left: auto; }
       .week-bar-avg span { color: #9e9eff; font-weight: 700; }
 
-      .calendar-wrap { padding: 4px; overflow-y: auto; }
-      .week-group { flex: none; margin-bottom: 3px; }
-      .days-row { flex: none; height: 70px; gap: 3px; }
+      .calendar-wrap { padding: 4px; overflow: visible; flex: none; }
+      .week-group { flex: none; margin-bottom: 4px; }
+      .days-row { flex: none; height: 72px; gap: 3px; }
       .day-cell { padding: 4px 3px; border-radius: 7px; gap: 2px; }
       .day-num { font-size: 0.7em; width: 18px; height: 18px; }
       .cell-total { font-size: 0.7em; }
