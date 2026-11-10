@@ -217,6 +217,23 @@
       font-weight: 800; color: #4a4af4;
     }
 
+    /* 주간 비교 */
+    .week-compare {
+      font-size: 0.56em;
+      color: #999;
+      font-weight: 600;
+      margin-top: 2px;
+      padding-top: 2px;
+      border-top: 1px dashed #e0e0ff;
+    }
+    .week-compare .compare-item {
+      display: flex; gap: 3px; align-items: center;
+      margin-bottom: 1px;
+    }
+    .compare-up { color: #ef5350; font-weight: 700; }
+    .compare-down { color: #4a4af4; font-weight: 700; }
+    .compare-same { color: #aaa; }
+
     /* ──── 모달 공통 ──── */
     .modal-overlay {
       display: none; position: fixed; inset: 0;
@@ -303,7 +320,7 @@
     }
     .product-name {
       font-size: 0.82em; font-weight: 800;
-      color: #e67e22; margin-bottom: 8px;
+      color: #e67e22; margin-bottom: 4px;
       display: flex; align-items: center; gap: 6px;
     }
     .product-name .dot {
@@ -312,6 +329,34 @@
       background: #e67e22;
       flex-shrink: 0;
     }
+
+    /* 최근 주문 레퍼런스 */
+    .product-ref {
+      display: flex; flex-wrap: wrap; gap: 4px 12px;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      background: #fff8f0;
+      border-radius: 8px;
+      border: 1px solid #fde8d0;
+    }
+    .product-ref-item {
+      font-size: 0.68em;
+      color: #999;
+      font-weight: 600;
+      display: flex; align-items: center; gap: 3px;
+    }
+    .product-ref-item .ref-val {
+      color: #e67e22;
+      font-weight: 800;
+    }
+    .product-ref-item .ref-val.purple {
+      color: #8e44ad;
+    }
+    .product-ref-item .ref-date {
+      color: #bbb;
+      font-size: 0.9em;
+    }
+
     .product-rows {
       display: flex; flex-direction: column; gap: 6px;
     }
@@ -771,7 +816,7 @@
   let selectedKey  = null;
   let isSaving     = false;
   let sales = {};
-  let products = []; // 품목 리스트
+  let products = [];
 
   const USE_FIREBASE = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
   let db = null;
@@ -871,6 +916,104 @@
     setTimeout(() => t.classList.remove('show'), 2000);
   }
 
+  // ─── 날짜 유틸 ───
+  function parseKey(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function addDays(date, n) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+  function dateToKey(date) {
+    return fmt(date.getFullYear(), date.getMonth() + 1, date.getDate());
+  }
+
+  // ─── 최근 주문 찾기 ───
+  // 선택한 날 이전에 해당 품목의 주문이 있었던 가장 최근 날짜
+  function findLastOrder(beforeKey, productName) {
+    const beforeDate = parseKey(beforeKey);
+    let bestKey = null;
+    let bestDate = null;
+
+    for (const key of Object.keys(sales)) {
+      const e = sales[key];
+      if (!e || !e.products || !e.products[productName]) continue;
+      const o = e.products[productName].orders || 0;
+      if (o <= 0) continue;
+
+      const d = parseKey(key);
+      if (d >= beforeDate) continue;
+
+      if (!bestDate || d > bestDate) {
+        bestDate = d;
+        bestKey = key;
+      }
+    }
+
+    if (!bestKey) return null;
+    const entry = sales[bestKey].products[productName];
+    const d = parseKey(bestKey);
+    return {
+      key: bestKey,
+      date: d,
+      dateLabel: `${d.getMonth()+1}/${d.getDate()} ${DAY_KO[d.getDay()]}`,
+      orders: entry.orders || 0,
+      consumed: entry.consumed || 0
+    };
+  }
+
+  // ─── 이번 주 누적 주문 (해당 날짜의 주(일~토) 기준) ───
+  function getWeekAccum(dateKey, productName) {
+    const d = parseKey(dateKey);
+    const dow = d.getDay();
+    const weekStart = addDays(d, -dow); // 일요일 시작
+    let total = 0;
+    for (let i = 0; i < 7; i++) {
+      const wd = addDays(weekStart, i);
+      const wk = dateToKey(wd);
+      if (wk >= dateKey) break; // 선택한 날 이전까지만
+      const e = sales[wk];
+      if (e && e.products && e.products[productName]) {
+        total += e.products[productName].orders || 0;
+      }
+    }
+    return total;
+  }
+
+  // ─── 주간 품목 합계 (날짜 배열 기준) ───
+  function getWeekProductTotals(dayKeys) {
+    const totals = {};
+    for (const key of dayKeys) {
+      const e = sales[key];
+      if (!e || !e.products) continue;
+      for (const [name, pd] of Object.entries(e.products)) {
+        if (!totals[name]) totals[name] = { orders: 0, consumed: 0 };
+        totals[name].orders += pd.orders || 0;
+        totals[name].consumed += pd.consumed || 0;
+      }
+    }
+    return totals;
+  }
+
+  // ─── 전주 날짜 키 배열 ───
+  function getPrevWeekKeys(weekDayNums, month, year) {
+    // weekDayNums = [2,3,4,5,6,7,8] (이번 주 날짜들)
+    // 7일 전의 날짜들
+    const keys = [];
+    if (weekDayNums.length === 0) return keys;
+    const firstDay = weekDayNums.find(d => d !== null);
+    if (!firstDay) return keys;
+
+    const firstDate = new Date(year, month, firstDay);
+    for (let i = 7; i >= 1; i--) {
+      const d = addDays(firstDate, -i);
+      keys.push(dateToKey(d));
+    }
+    return keys;
+  }
+
   // ─── 스테퍼 (품목별) ───
   function stepQty(pIdx, field, delta) {
     const el = document.getElementById(`qty-${pIdx}-${field}`);
@@ -886,7 +1029,6 @@
   // ─── 품목 요약 유틸 ───
   function getProductSummary(entry) {
     const p = entry.products || {};
-    // 기존 단일 orders/consumed 호환
     const legacyOrders   = entry.orders   || 0;
     const legacyConsumed = entry.consumed || 0;
     let totalOrders = legacyOrders, totalConsumed = legacyConsumed;
@@ -928,9 +1070,10 @@
 
     let mCard = 0, mCash = 0, mDays = 0;
 
-    weeks.forEach(wk => {
+    weeks.forEach((wk, wkIdx) => {
       let wCard = 0, wCash = 0, hasData = false;
       let wProducts = {};
+      const weekDayKeys = [];
 
       wk.forEach(d => {
         const cell = document.createElement('div');
@@ -940,6 +1083,7 @@
           const key = fmt(y, m+1, d);
           const dow = new Date(y, m, d).getDay();
           const e   = sales[key];
+          weekDayKeys.push(key);
 
           let cls = 'day-cell';
           if (dow === 0) cls += ' sun';
@@ -997,22 +1141,58 @@
         grid.appendChild(cell);
       });
 
-      // 주간 합계
+      // ─── 주간 합계 ───
       const wc = document.createElement('div');
       if (!hasData) {
         wc.className = 'week-cell empty-week';
       } else {
         wc.className = 'week-cell';
+
+        // 전주 데이터 구하기
+        const validDays = wk.filter(d => d !== null);
+        const prevKeys = getPrevWeekKeys(validDays, m, y);
+        const prevProducts = getWeekProductTotals(prevKeys);
+
         let h = `<div class="week-label">주간</div><div class="week-row">
           <div class="week-item card"><span class="label">카드</span><span class="val">${fmtMoney(wCard)}</span></div>
           <div class="week-item cash"><span class="label">현금</span><span class="val">${fmtMoney(wCash)}</span></div>`;
         for (const pn of Object.keys(wProducts)) {
           const wp = wProducts[pn];
           if (wp.orders > 0) {
-            h += `<div class="week-item product"><span class="label">${pn}</span><span class="val">${wp.orders}</span></div>`;
+            h += `<div class="week-item product"><span class="label">${pn}</span><span class="val">주문${wp.orders}</span></div>`;
           }
         }
         h += `</div><div class="week-divider"></div><div class="week-total-row">${fmtMoney(wCard + wCash)}</div>`;
+
+        // 전주 비교
+        const allProductNames = new Set([...Object.keys(wProducts), ...Object.keys(prevProducts)]);
+        const hasAnyPrev = Object.keys(prevProducts).some(pn => (prevProducts[pn].orders || 0) > 0);
+        const hasAnyCurr = Object.keys(wProducts).some(pn => (wProducts[pn].orders || 0) > 0);
+
+        if (hasAnyPrev || hasAnyCurr) {
+          h += `<div class="week-compare">`;
+          h += `<div style="font-size:0.92em;color:#bbb;margin-bottom:2px;">vs 전주</div>`;
+          for (const pn of allProductNames) {
+            const curr = (wProducts[pn]?.orders) || 0;
+            const prev = (prevProducts[pn]?.orders) || 0;
+            if (curr === 0 && prev === 0) continue;
+            const diff = curr - prev;
+            let diffLabel, diffCls;
+            if (diff > 0) {
+              diffLabel = `▲${diff}`;
+              diffCls = 'compare-up';
+            } else if (diff < 0) {
+              diffLabel = `▼${Math.abs(diff)}`;
+              diffCls = 'compare-down';
+            } else {
+              diffLabel = '−';
+              diffCls = 'compare-same';
+            }
+            h += `<div class="compare-item"><span style="color:#e67e22;">${pn}</span> <span class="${diffCls}">${diffLabel}</span></div>`;
+          }
+          h += `</div>`;
+        }
+
         wc.innerHTML = h;
       }
       grid.appendChild(wc);
@@ -1058,10 +1238,32 @@
       const orders = pd.orders || 0;
       const consumed = pd.consumed || 0;
 
+      // 최근 주문 찾기
+      const lastOrder = selectedKey ? findLastOrder(selectedKey, name) : null;
+      // 이번 주 누적
+      const weekAccum = selectedKey ? getWeekAccum(selectedKey, name) : 0;
+
       const item = document.createElement('div');
       item.className = 'product-item';
+
+      let refHtml = '';
+      if (lastOrder || weekAccum > 0) {
+        refHtml = '<div class="product-ref">';
+        if (lastOrder) {
+          refHtml += `<span class="product-ref-item">최근 주문: <span class="ref-val">${lastOrder.orders}개</span> <span class="ref-date">(${lastOrder.dateLabel})</span></span>`;
+          if (lastOrder.consumed > 0) {
+            refHtml += `<span class="product-ref-item">소진: <span class="ref-val purple">${lastOrder.consumed}개</span></span>`;
+          }
+        }
+        if (weekAccum > 0) {
+          refHtml += `<span class="product-ref-item">이번주 누적: <span class="ref-val">${weekAccum}개</span></span>`;
+        }
+        refHtml += '</div>';
+      }
+
       item.innerHTML = `
         <div class="product-name"><span class="dot"></span>${name}</div>
+        ${refHtml}
         <div class="product-rows">
           <div class="product-row">
             <span class="product-row-label orders">주문</span>
@@ -1111,7 +1313,6 @@
     const card = parseInt(document.getElementById('input-card').value) || 0;
     const cash = parseInt(document.getElementById('input-cash').value) || 0;
 
-    // 품목별 수량 수집
     const prodData = {};
     let hasAnyQty = false;
     products.forEach((name, i) => {
@@ -1181,7 +1382,23 @@
         let line = `  • ${it.name}:`;
         if (it.orders > 0) line += ` 주문 ${it.orders}개`;
         if (it.consumed > 0) line += ` / 소진 ${it.consumed}개`;
+
+        // 최근 주문 대비
+        const lastOrder = findLastOrder(selectedKey, it.name);
+        if (lastOrder) {
+          const diff = it.orders - lastOrder.orders;
+          if (diff !== 0) {
+            line += ` (전회 ${lastOrder.orders}개, ${diff > 0 ? '▲' : '▼'}${Math.abs(diff)})`;
+          }
+        }
         t += line + '\n';
+      });
+
+      // 이번 주 누적
+      t += `\n📅 이번 주 누적 주문\n`;
+      ps.items.forEach(it => {
+        const weekAccum = getWeekAccum(selectedKey, it.name) + it.orders;
+        t += `  • ${it.name}: ${weekAccum}개\n`;
       });
     }
 
@@ -1240,6 +1457,36 @@
         if (mp.orders > 0) line += ` 주문 ${mp.orders}개`;
         if (mp.consumed > 0) line += ` / 소진 ${mp.consumed}개`;
         t += line + '\n';
+      });
+
+      // 주간별 비교
+      t += `\n📊 주간별 주문 추이\n`;
+      const firstDay = new Date(y, m, 1).getDay();
+      const weeks2 = [];
+      let wk2 = Array(firstDay).fill(null);
+      for (let d = 1; d <= dim; d++) {
+        wk2.push(d);
+        if (wk2.length === 7) { weeks2.push(wk2); wk2 = []; }
+      }
+      while (wk2.length > 0 && wk2.length < 7) wk2.push(null);
+      if (wk2.length) weeks2.push(wk2);
+
+      weeks2.forEach((wk, wi) => {
+        const weekKeys = wk.filter(d => d !== null).map(d => fmt(y, m+1, d));
+        const wTotals = getWeekProductTotals(weekKeys);
+        const hasOrders = Object.values(wTotals).some(v => v.orders > 0);
+        if (!hasOrders) return;
+
+        const firstD = wk.find(d => d !== null);
+        const lastD = [...wk].reverse().find(d => d !== null);
+        t += `  ${firstD}~${lastD}일: `;
+        const parts = [];
+        for (const pn of Object.keys(wTotals)) {
+          if (wTotals[pn].orders > 0) {
+            parts.push(`${pn} ${wTotals[pn].orders}개`);
+          }
+        }
+        t += parts.join(', ') + '\n';
       });
     }
 
